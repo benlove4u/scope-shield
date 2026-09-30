@@ -115,20 +115,29 @@ export default function ClientPortalView({ client: propClient }) {
     setApprovalSubmitting(true);
 
     try {
-      // Simulate API / Serverless call to functions/api/create-change-order
-      const response = await fetch('/api/create-change-order', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          changeOrderId: selectedOrderForApproval.id,
-          clientId: currentClient.id,
-          amount: selectedOrderForApproval.amount,
-          billingOption: paymentMethod,
-          clientSignature: signatureName.trim(),
-        })
-      }).catch(() => null); // Graceful fallback if serverless mock is running client-side
+      if (paymentMethod === 'stripe_checkout') {
+        const response = await fetch('/api/create-change-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            changeOrderId: selectedOrderForApproval.id,
+            clientName: currentClient.name,
+            requestTitle: selectedOrderForApproval.requestTitle,
+            amount: selectedOrderForApproval.amount,
+            returnUrl: window.location.href,
+          })
+        });
 
-      // Update Supabase / Local storage state
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.checkoutUrl) {
+            window.location.href = data.checkoutUrl;
+            return;
+          }
+        }
+      }
+
+      // Fallback for non-Stripe or offline
       const approved = approveChangeOrder(
         selectedOrderForApproval.id,
         `${signatureName.trim()} (Electronic Sign-off)`,
