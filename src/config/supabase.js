@@ -166,7 +166,7 @@ const DEFAULT_CHANGE_ORDERS = [
     status: 'pending_client_approval',
     urgency: 'critical',
     estimatedHours: 48,
-    amount: 1,
+    amount: 12000,
     scopeClassification: 'out_of_scope',
     scopeAnalysis: 'Explicitly flagged by ScopeShield AI: Classified as "Market-making / high-frequency bot", strictly barred in Section 8.4 exclusions.',
     lineItems: [
@@ -183,7 +183,7 @@ const DEFAULT_CHANGE_ORDERS = [
 // Persistent state accessor
 const STORAGE_KEYS = {
   CLIENTS: 'scopeshield_clients_v1',
-  CHANGE_ORDERS: 'scopeshield_cos_v5',
+  CHANGE_ORDERS: 'scopeshield_cos_prod_v1',
 };
 
 export const getStoredClients = () => {
