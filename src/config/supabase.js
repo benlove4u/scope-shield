@@ -183,7 +183,7 @@ const DEFAULT_CHANGE_ORDERS = [
 // Persistent state accessor
 const STORAGE_KEYS = {
   CLIENTS: 'scopeshield_clients_v1',
-  CHANGE_ORDERS: 'scopeshield_cos_v3',
+  CHANGE_ORDERS: 'scopeshield_cos_v4',
 };
 
 export const getStoredClients = () => {
