@@ -1,10 +1,76 @@
 ﻿import Stripe from 'stripe';
+import { createClient } from '@supabase/supabase-js';
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
-    // 1. Handle API Route
+    // ==========================================
+    // 1. STRIPE WEBHOOK HANDLER
+    // ==========================================
+    if (url.pathname === '/api/stripe-webhook') {
+      if (request.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+
+      const signature = request.headers.get('stripe-signature');
+      const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
+      const stripeKey = env.STRIPE_SECRET_KEY;
+
+      if (!signature || !webhookSecret) {
+        return new Response('Missing webhook signature or secret', { status: 400 });
+      }
+
+      const stripe = new Stripe(stripeKey);
+      const rawBody = await request.text();
+      let event;
+
+      try {
+        event = await stripe.webhooks.constructEventAsync(
+          rawBody,
+          signature,
+          webhookSecret
+        );
+      } catch (err) {
+        return new Response(`Webhook Signature Verification Failed: ${err.message}`, { status: 400 });
+      }
+
+      if (event.type === 'checkout.session.completed') {
+        const session = event.data.object;
+        const changeOrderId = session.metadata?.changeOrderId;
+
+        if (changeOrderId && env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+          const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+
+          const { error } = await supabase
+            .from('change_orders')
+            .upsert({
+              id: changeOrderId,
+              client_name: session.metadata?.clientName || null,
+              status: 'approved',
+              payment_status: 'paid',
+              stripe_session_id: session.id,
+              stripe_payment_intent: session.payment_intent,
+              authorized_at: new Date().toISOString(),
+              billing_option: 'stripe_checkout'
+            }, { onConflict: 'id' });
+
+          if (error) {
+            console.error('Supabase update failed:', error);
+            return new Response(JSON.stringify({ error: error.message }), { status: 500 });
+          }
+        }
+      }
+
+      return new Response(JSON.stringify({ received: true }), {
+        headers: { 'Content-Type': 'application/json' },
+        status: 200,
+      });
+    }
+
+    // ==========================================
+    // 2. CHECKOUT SESSION CREATION
+    // ==========================================
     if (url.pathname === '/api/create-change-order' || url.pathname.endsWith('/create-change-order')) {
       const headers = {
         'Access-Control-Allow-Origin': '*',
@@ -21,18 +87,12 @@ export default {
         try {
           const body = await request.json();
           const { changeOrderId, clientName, requestTitle, amount, returnUrl } = body;
-
           const stripeKey = env.STRIPE_SECRET_KEY;
 
           if (!stripeKey) {
             return new Response(
-              JSON.stringify({
-                success: true,
-                mode: 'simulation',
-                checkoutUrl: `https://checkout.stripe.com/pay/cs_test_mock_${Date.now()}`,
-                message: 'Simulation mode. Add STRIPE_SECRET_KEY in Cloudflare settings for live checkout.'
-              }),
-              { headers, status: 200 }
+              JSON.stringify({ error: 'STRIPE_SECRET_KEY not configured' }),
+              { headers, status: 500 }
             );
           }
 
@@ -82,7 +142,9 @@ export default {
       return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { headers, status: 405 });
     }
 
-    // 2. Serve Single Page App assets from ./dist
+    // ==========================================
+    // 3. SPA STATIC ASSET FALLBACK
+    // ==========================================
     if (env.ASSETS) {
       return env.ASSETS.fetch(request);
     }
